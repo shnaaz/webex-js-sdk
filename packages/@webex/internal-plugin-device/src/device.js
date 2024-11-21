@@ -2,6 +2,7 @@
 import {deprecated, oneFlight} from '@webex/common';
 import {persist, waitForValue, WebexPlugin} from '@webex/webex-core';
 import {safeSetTimeout} from '@webex/common-timers';
+import {orderBy} from 'lodash';
 
 import METRICS from './metrics';
 import {FEATURE_COLLECTION_NAMES, DEVICE_EVENT_REGISTRATION_SUCCESS} from './constants';
@@ -439,7 +440,62 @@ const Device = WebexPlugin.extend({
         });
     });
   },
+  /**
+   * Fetches the web devices and deletes the third of them which are not recent devices in use
+   * @returns {Promise<void, Error>}
+   */
+  deleteDevices() {
+    // Fetch devices with a GET request
+    return this.request({
+      method: 'GET',
+      service: 'wdm',
+      resource: 'devices',
+    })
+      .then((response) => {
+        const {devices} = response.body;
 
+        // Filter devices of type 'WEB'
+        const webDevices = devices.filter((item) => item.deviceType === 'WEB');
+
+        const sortedDevices = orderBy(webDevices, [(item) => new Date(item.modificationTime)]);
+
+        // If there are more than two devices, delete the last third
+        if (sortedDevices.length > 2) {
+          const totalItems = sortedDevices.length;
+          const countToDelete = Math.ceil(totalItems / 3);
+          const urlsToDelete = sortedDevices.slice(0, countToDelete).map((item) => item.url);
+
+          // Send DELETE requests for each URL
+          urlsToDelete.forEach((url) => {
+            this.request({
+              uri: url,
+              method: 'DELETE',
+            }).then(() => {
+              this.clear();
+            });
+          });
+        }
+      })
+      .catch((error) => {
+        this.logger.error('Failed to retrieve devices:', error);
+      });
+  },
+
+  /**
+   * Registers and when fails deletes devices
+   */
+  @oneFlight
+  @waitForValue('@')
+  register(deviceRegistrationOptions = {}) {
+    return this._registerInternal(deviceRegistrationOptions).catch((error) => {
+      if (!deviceRegistrationOptions.deleteFlag) {
+        return this.deleteDevices().then(() => {
+          return this._registerInternal({deleteFlag: true});
+        });
+      }
+      throw error;
+    });
+  },
   /**
    * Register or refresh a device depending on the current device state. Device
    * registration utilizes the services plugin to send the request to the
@@ -451,7 +507,7 @@ const Device = WebexPlugin.extend({
    */
   @oneFlight
   @waitForValue('@')
-  register(deviceRegistrationOptions = {}) {
+  _registerInternal(deviceRegistrationOptions = {}) {
     this.logger.info('device: registering');
 
     this.webex.internal.newMetrics.callDiagnosticMetrics.setDeviceInfo(this);
@@ -527,7 +583,6 @@ const Device = WebexPlugin.extend({
         });
     });
   },
-
   /**
    * Unregister the current registered device if available. Unregistering a
    * device utilizes the services plugin to send the request to the **WDM**

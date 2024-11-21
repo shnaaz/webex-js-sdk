@@ -357,6 +357,97 @@ describe('plugin-device', () => {
       });
     });
 
+    describe('deleteDevices()', () => {
+      it('should delete correct number of devices', async () => {
+          const response = {
+            body: {
+                devices: [
+                  {url: 'url3', modificationTime: '2023-10-03T10:00:00Z', deviceType: 'WEB'},
+                  {url: 'url4', modificationTime: '2023-10-04T10:00:00Z', deviceType: 'notweb'},
+                  {url: 'url1', modificationTime: '2023-10-01T10:00:00Z', deviceType: 'WEB'},
+                  {url: 'url2', modificationTime: '2023-10-02T10:00:00Z', deviceType: 'WEB'},
+                ]
+            }
+        };
+
+        const requestStub = sinon.stub(device, 'request');
+        requestStub.withArgs(sinon.match({method: 'GET'})).resolves(response);
+        requestStub.withArgs(sinon.match({method: 'DELETE'})).resolves();
+
+        const clearSpy = sinon.spy(device, 'clear');
+        await device.deleteDevices();
+
+        // Calculate expected deletions
+        const expectedDeletions = ['url1'];
+
+        expectedDeletions.forEach(url => {
+            assert(requestStub.calledWith(sinon.match({uri: url, method: 'DELETE'})));
+        });
+
+        const notDeletedUrls = ['url2', 'url3', 'url4'];
+        notDeletedUrls.forEach(url => {
+            assert(requestStub.neverCalledWith(sinon.match({uri: url, method: 'DELETE'})));
+        });
+
+        assert.equal(clearSpy.callCount, expectedDeletions.length);
+     });
+
+     it('should delete correct number of devices', async () => {
+        const response = {
+          body: {
+              devices: [
+                {url: 'url3', modificationTime: '2023-10-03T10:00:00Z', deviceType: 'WEB'},
+                {url: 'url4', modificationTime: '2023-10-04T10:00:00Z', deviceType: 'notweb'},
+                {url: 'url1', modificationTime: '2023-10-01T10:00:00Z', deviceType: 'WEB'},
+                {url: 'url2', modificationTime: '2023-10-02T10:00:00Z', deviceType: 'WEB'},
+              ]
+          }
+        };
+      const requestStub = sinon.stub(device, 'request');
+      requestStub.withArgs(sinon.match({method: 'GET'})).resolves(response);
+      requestStub.withArgs(sinon.match({method: 'DELETE'})).resolves();
+
+      const clearSpy = sinon.spy(device, 'clear');
+      await device.deleteDevices();
+
+      const expectedDeletions = ['url1'];
+
+      expectedDeletions.forEach(url => {
+          assert(requestStub.calledWith(sinon.match({uri: url, method: 'DELETE'})));
+      });
+
+      const notDeletedUrls = ['url2', 'url3', 'url4'];
+      notDeletedUrls.forEach(url => {
+          assert(requestStub.neverCalledWith(sinon.match({uri: url, method: 'DELETE'})));
+      });
+
+      assert.equal(clearSpy.callCount, expectedDeletions.length);
+    });
+
+    it('does not delete when there are just 2 devices', async () => {
+      const response = {
+        body: {
+          devices: [
+            {url: 'url1', modificationTime: '2023-10-01T10:00:00Z', deviceType: 'WEB'},
+            {url: 'url2', modificationTime: '2023-10-02T10:00:00Z', deviceType: 'WEB'},
+          ]
+        }
+      };
+
+      const requestStub = sinon.stub(device, 'request');
+      requestStub.withArgs(sinon.match({method: 'GET'})).resolves(response);
+      requestStub.withArgs(sinon.match({method: 'DELETE'})).resolves();
+
+      const clearSpy = sinon.spy(device, 'clear');
+      await device.deleteDevices();
+      const notDeletedUrls = ['url1', 'url2'];
+      notDeletedUrls.forEach(url => {
+          assert(requestStub.neverCalledWith(sinon.match({uri: url, method: 'DELETE'})));
+      });
+      assert.notCalled(clearSpy);
+    });
+   });
+
     describe('#register()', () => {
       const setup = (config = {}) => {
         webex.internal.metrics.submitClientMetrics = sinon.stub();
@@ -384,6 +475,40 @@ describe('plugin-device', () => {
         assert.calledWith(webex.internal.newMetrics.submitInternalEvent, {
           name: 'internal.register.device.request',
         });
+      });
+
+      it('calls delete devices when errors and delete flag is false', async () => {
+        setup();
+        const deleteDeviceSpy = sinon.stub(device, 'deleteDevices').callsFake(() => Promise.resolve());
+        const registerStub = sinon.stub(device, '_registerInternal');
+        
+        registerStub.onFirstCall().rejects(new Error('some error'));
+        registerStub.onSecondCall().callsFake(() => Promise.resolve({exampleKey: 'example response value',}));
+
+        const result = await device.register();
+
+        assert.calledOnce(deleteDeviceSpy);
+
+        assert.equal(registerStub.callCount, 2);
+
+        assert.deepEqual(result, {exampleKey: 'example response value'});
+      });
+
+      it('does not call delete devices when errors and delete flag is true', async () => {
+        setup();
+
+        const deleteDeviceSpy = sinon.stub(device, 'deleteDevices').callsFake(() => Promise.resolve());
+        const registerStub = sinon.stub(device, '_registerInternal').rejects(new Error('some error'));
+
+        try {
+          await device.register({deleteFlag: true});
+        } catch (error) {
+          assert.notCalled(deleteDeviceSpy);
+
+          assert.equal(registerStub.callCount, 1);
+
+          assert.match(error.message, /some error/, 'Expected error message not matched');
+        }
       });
 
       it('checks that submitInternalEvent gets called with internal.register.device.response on error', async () => {
