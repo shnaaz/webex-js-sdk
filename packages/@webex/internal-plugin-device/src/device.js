@@ -470,8 +470,6 @@ const Device = WebexPlugin.extend({
             this.request({
               uri: url,
               method: 'DELETE',
-            }).then(() => {
-              this.clear();
             });
           });
         }
@@ -488,9 +486,9 @@ const Device = WebexPlugin.extend({
   @waitForValue('@')
   register(deviceRegistrationOptions = {}) {
     return this._registerInternal(deviceRegistrationOptions).catch((error) => {
-      if (!deviceRegistrationOptions.deleteFlag) {
+      if (error?.body?.message === 'User has excessive device registrations') {
         return this.deleteDevices().then(() => {
-          return this._registerInternal({deleteFlag: true});
+          return this._registerInternal(deviceRegistrationOptions);
         });
       }
       throw error;
