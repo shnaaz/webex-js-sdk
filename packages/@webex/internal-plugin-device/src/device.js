@@ -454,8 +454,10 @@ const Device = WebexPlugin.extend({
       .then((response) => {
         const {devices} = response.body;
 
-        // Filter devices of type 'WEB'
-        const webDevices = devices.filter((item) => item.deviceType === 'WEB');
+        const {deviceType} = this._getBody();
+
+        // Filter devices of type deviceType
+        const webDevices = devices.filter((item) => item.deviceType === deviceType);
 
         const sortedDevices = orderBy(webDevices, [(item) => new Date(item.modificationTime)]);
 
@@ -494,6 +496,14 @@ const Device = WebexPlugin.extend({
       throw error;
     });
   },
+
+  _getBody() {
+    return {
+      ...(this.config.defaults.body ? this.config.defaults.body : {}),
+      ...(this.config.body ? this.config.body : {}),
+    };
+  },
+
   /**
    * Register or refresh a device depending on the current device state. Device
    * registration utilizes the services plugin to send the request to the
@@ -520,10 +530,7 @@ const Device = WebexPlugin.extend({
       }
 
       // Merge body configurations, overriding defaults.
-      const body = {
-        ...(this.config.defaults.body ? this.config.defaults.body : {}),
-        ...(this.config.body ? this.config.body : {}),
-      };
+      const body = this._getBody();
 
       // Merge header configurations, overriding defaults.
       const headers = {

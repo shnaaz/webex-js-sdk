@@ -358,7 +358,11 @@ describe('plugin-device', () => {
     });
 
     describe('deleteDevices()', () => {
+      const setup = (deviceType) => {
+        device.config.defaults = {body: {deviceType}};
+      };
      it('should delete correct number of devices', async () => {
+      setup('WEB');
         const response = {
           body: {
               devices: [
@@ -391,7 +395,42 @@ describe('plugin-device', () => {
       });
     });
 
+    it('should delete correct number of devices when deviceType in config WEBCLIENT', async () => {
+      setup('WEBCLIENT');
+        const response = {
+          body: {
+              devices: [
+                {url: 'url3', modificationTime: '2023-10-03T10:00:00Z', deviceType: 'WEBCLIENT'},
+                {url: 'url4', modificationTime: '2023-10-04T10:00:00Z', deviceType: 'notweb'},
+                {url: 'url1', modificationTime: '2023-10-01T10:00:00Z', deviceType: 'WEBCLIENT'},
+                {url: 'url2', modificationTime: '2023-10-02T10:00:00Z', deviceType: 'WEBCLIENT'},
+                {url: 'url5', modificationTime: '2023-10-00T10:00:00Z', deviceType: 'WEBCLIENT'},
+                {url: 'url6', modificationTime: '2023-09-50T10:00:00Z', deviceType: 'WEBCLIENT'},
+                {url: 'url7', modificationTime: '2023-09-30T10:00:00Z', deviceType: 'WEBCLIENT'},
+                {url: 'url8', modificationTime: '2023-08-30T10:00:00Z', deviceType: 'WEBCLIENT'},
+              ]
+          }
+        };
+      const requestStub = sinon.stub(device, 'request');
+      requestStub.withArgs(sinon.match({method: 'GET'})).resolves(response);
+      requestStub.withArgs(sinon.match({method: 'DELETE'})).resolves();
+
+      await device.deleteDevices();
+
+      const expectedDeletions = ['url8', 'url7', 'url1'];
+
+      expectedDeletions.forEach(url => {
+          assert(requestStub.calledWith(sinon.match({uri: url, method: 'DELETE'})));
+      });
+
+      const notDeletedUrls = ['url2', 'url3', 'url5', 'url6', 'url4'];
+      notDeletedUrls.forEach(url => {
+          assert(requestStub.neverCalledWith(sinon.match({uri: url, method: 'DELETE'})));
+      });
+    });
+
     it('does not delete when there are just 2 devices', async () => {
+      setup('WEB');
       const response = {
         body: {
           devices: [
