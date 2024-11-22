@@ -467,17 +467,22 @@ const Device = WebexPlugin.extend({
           const countToDelete = Math.ceil(totalItems / 3);
           const urlsToDelete = sortedDevices.slice(0, countToDelete).map((item) => item.url);
 
-          // Send DELETE requests for each URL
-          urlsToDelete.forEach((url) => {
-            this.request({
-              uri: url,
-              method: 'DELETE',
-            });
-          });
+          return Promise.race(
+            urlsToDelete.map((url) => {
+              return this.request({
+                uri: url,
+                method: 'DELETE',
+              });
+            })
+          );
         }
+
+        return Promise.resolve();
       })
       .catch((error) => {
         this.logger.error('Failed to retrieve devices:', error);
+
+        return Promise.reject(error);
       });
   },
 
